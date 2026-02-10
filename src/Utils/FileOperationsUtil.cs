@@ -11,8 +11,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.ValueTask;
+using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.File.Download.Abstract;
+using System.Collections.Generic;
 
 namespace Soenneker.Stripe.Runners.OpenApiClient.Utils;
 
@@ -25,8 +27,9 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
     private readonly IProcessUtil _processUtil;
     private readonly IFileDownloadUtil _fileDownloadUtil;
     private readonly IFileUtil _fileUtil;
+    private readonly IDirectoryUtil _directoryUtil;
 
-    public FileOperationsUtil(ILogger<FileOperationsUtil> logger, IGitUtil gitUtil, IDotnetUtil dotnetUtil, IProcessUtil processUtil, IFileDownloadUtil fileDownloadUtil, IFileUtil fileUtil)
+    public FileOperationsUtil(ILogger<FileOperationsUtil> logger, IGitUtil gitUtil, IDotnetUtil dotnetUtil, IProcessUtil processUtil, IFileDownloadUtil fileDownloadUtil, IFileUtil fileUtil, IDirectoryUtil directoryUtil)
     {
         _logger = logger;
         _gitUtil = gitUtil;
@@ -34,6 +37,7 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
         _processUtil = processUtil;
         _fileDownloadUtil = fileDownloadUtil;
         _fileUtil = fileUtil;
+        _directoryUtil = directoryUtil;
     }
 
     public async ValueTask Process(CancellationToken cancellationToken = default)
@@ -61,7 +65,7 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
 
     public async ValueTask DeleteAllExceptCsproj(string directoryPath, CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(directoryPath))
+        if (!(await _directoryUtil.Exists(directoryPath, cancellationToken)))
         {
             _logger.LogWarning("Directory does not exist: {DirectoryPath}", directoryPath);
             return;
@@ -70,7 +74,8 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
         try
         {
             // Delete all files except .csproj
-            foreach (string file in Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories))
+            List<string> files = await _directoryUtil.GetFilesByExtension(directoryPath, "", true, cancellationToken);
+            foreach (string file in files)
             {
                 if (!file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
                 {
@@ -87,14 +92,16 @@ public sealed class FileOperationsUtil : IFileOperationsUtil
             }
 
             // Delete all empty subdirectories
-            foreach (string dir in Directory.GetDirectories(directoryPath, "*", SearchOption.AllDirectories)
-                                            .OrderByDescending(d => d.Length)) // Sort by depth to delete from deepest first
+            List<string> dirs = await _directoryUtil.GetAllDirectoriesRecursively(directoryPath, cancellationToken);
+            foreach (string dir in dirs.OrderByDescending(d => d.Length)) // Sort by depth to delete from deepest first
             {
                 try
                 {
-                    if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any())
+                    List<string> dirFiles = await _directoryUtil.GetFilesByExtension(dir, "", false, cancellationToken);
+                    List<string> subDirs = await _directoryUtil.GetAllDirectories(dir, cancellationToken);
+                    if (dirFiles.Count == 0 && subDirs.Count == 0)
                     {
-                        Directory.Delete(dir, recursive: false);
+                        await _directoryUtil.Delete(dir, cancellationToken);
                         _logger.LogInformation("Deleted empty directory: {DirectoryPath}", dir);
                     }
                 }
