@@ -1,17 +1,16 @@
-﻿using Soenneker.Tests.FixturedUnit;
-using Xunit;
+using Soenneker.Tests.HostedUnit;
 
 namespace Soenneker.Stripe.Runners.OpenApiClient.Tests;
 
-[Collection("Collection")]
-public sealed class StripeOpenApiRunnerTests : FixturedUnitTest
+[ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
+public sealed class StripeOpenApiRunnerTests : HostedUnitTest
 {
 
-    public StripeOpenApiRunnerTests(Fixture fixture, ITestOutputHelper output) : base(fixture, output)
+    public StripeOpenApiRunnerTests(Host host) : base(host)
     {
     }
 
-    [Fact]
+    [Test]
     public void Default()
     {
 
